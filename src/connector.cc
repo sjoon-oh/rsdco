@@ -13,22 +13,36 @@
 
 #include "../hartebeest/src/includes/hartebeest-c.h"
 #include "./includes/connector.h"
+// #include ""
 
+
+// System Vars
 std::string sysvar_nid;
 std::string sysvar_participants;
-
 std::vector<std::string> sysvar_nids;
 
+// Predefined
 std::string key_rsdco_pd = "rsdco-pd";
 
-struct RsdcoWriteContext {
-    struct ibv_qp* local_qp;
-    struct ibv_qp* local_mr;
-    struct ibv_mr* remote_mr;
-};
+// 
+struct ibv_mr* replicator_mr;
+struct ibv_mr* checker_mr;
 
-const size_t mr_buf_sz = 2147483648;
+std::vector<struct ConnectionWriteContext> replicator_conns{};
+std::vector<struct ConnectionWriteContext> checker_conns{};
 
+
+
+// std::vector<struct Connection> replicator_conns{};
+// std::vector<struct Connection> checker_conns{};
+
+const char* rsdco_make_mr_key(std::string identifier, std::string from, std::string to) {
+    return (identifier + "-mr-from-" + from + "-to-" + to).c_str();
+}
+
+const char* rsdco_make_qp_key(std::string identifier, std::string from, std::string to) {
+    return (identifier + "-qp-from-" + from + "-to-" + to).c_str();
+}
 
 void rsdco_writer_init(std::string prefix_writer) {
 
@@ -38,7 +52,7 @@ void rsdco_writer_init(std::string prefix_writer) {
     hartebeest_create_local_mr(
             key_rsdco_pd.c_str(),
             mr_key.c_str(), 
-            mr_buf_sz,
+            RSDCO_BUFSZ,
             IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE
         );
     
@@ -46,7 +60,7 @@ void rsdco_writer_init(std::string prefix_writer) {
         if (nid == sysvar_nid)
             continue;
 
-        std::string qp_key = prefix_writer + "-qp-from-" + sysvar_nid + "-to-" + nid;
+        std::string qp_key = rsdco_make_qp_key(prefix_writer, sysvar_nid, nid);
         std::string send_cq_key = prefix_writer + "-send-cq-to-" + nid;
         std::string recv_cq_key = prefix_writer + "-recv-cq-to-" + nid;
 
@@ -58,9 +72,7 @@ void rsdco_writer_init(std::string prefix_writer) {
         );
 
         is_memc_pushed = hartebeest_memc_push_local_qp(
-            qp_key.c_str(),
-            key_rsdco_pd.c_str(),
-            qp_key.c_str()
+            qp_key.c_str(), key_rsdco_pd.c_str(), qp_key.c_str()
         );
 
         assert(is_memc_pushed == true);
@@ -75,11 +87,12 @@ void rsdco_receiver_init(std::string prefix_receiver) {
         if (nid == sysvar_nid)
             continue;
 
-        std::string mr_key = prefix_receiver + "-mr-from-" + nid + "-to-" + sysvar_nid;
+        std::string mr_key = rsdco_make_mr_key(prefix_receiver, nid, sysvar_nid);
+        
         hartebeest_create_local_mr(
                 key_rsdco_pd.c_str(),
                 mr_key.c_str(), 
-                mr_buf_sz,
+                RSDCO_BUFSZ,
                 IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE
             );
 
@@ -89,7 +102,7 @@ void rsdco_receiver_init(std::string prefix_receiver) {
             mr_key.c_str()
         );
 
-        std::string qp_key = prefix_receiver + "-qp-from-" + nid + "-to-" + sysvar_nid;
+        std::string qp_key = rsdco_make_qp_key(prefix_receiver, nid, sysvar_nid);
         std::string send_cq_key = prefix_receiver + "-send-cq-from-" + nid;
         std::string recv_cq_key = prefix_receiver + "-recv-cq-from-" + nid;
 
@@ -101,9 +114,7 @@ void rsdco_receiver_init(std::string prefix_receiver) {
         );
 
         is_memc_pushed = hartebeest_memc_push_local_qp(
-            qp_key.c_str(),
-            key_rsdco_pd.c_str(),
-            qp_key.c_str()
+            qp_key.c_str(), key_rsdco_pd.c_str(), qp_key.c_str()
         );
 
         assert(is_memc_pushed == true);
@@ -126,6 +137,8 @@ void rsdco_writer_qp_connect(std::string prefix_writer, std::string prefix_recei
         hartebeest_init_local_qp(key_rsdco_pd.c_str(), local_qp_key.c_str());
         hartebeest_connect_local_qp(key_rsdco_pd.c_str(), local_qp_key.c_str(), remote_qp_key.c_str());
     }
+
+    std::cout << __func__ << " ended \n";
 }
 
 void rsdco_receiver_qp_connect(std::string prefix_receiver, std::string prefix_writer) {
@@ -142,6 +155,8 @@ void rsdco_receiver_qp_connect(std::string prefix_receiver, std::string prefix_w
         hartebeest_init_local_qp(key_rsdco_pd.c_str(), local_qp_key.c_str());
         hartebeest_connect_local_qp(key_rsdco_pd.c_str(), local_qp_key.c_str(), remote_qp_key.c_str());
     }
+
+    std::cout << __func__ << " ended \n";
 }
 
 void rdsco_memc_clean(std::string prefix_writer, std::string prefix_receiver) {
@@ -171,6 +186,9 @@ void rdsco_memc_clean(std::string prefix_writer, std::string prefix_receiver) {
 
 void rsdco_connector_init() {
     
+    replicator_mr = nullptr;
+    checker_mr = nullptr;
+
     hartebeest_init();
 
     sysvar_nid = std::string(hartebeest_get_sysvar("HARTEBEEST_NID"));
@@ -198,9 +216,26 @@ void rsdco_connector_init() {
     std::string msg = "qp-connected-" + sysvar_nid;
     hartebeest_memc_push_general(msg.c_str());
 
+    replicator_mr = hartebeest_get_local_mr(key_rsdco_pd.c_str(), ("replicator-mr-" + sysvar_nid).c_str());
+    checker_mr = hartebeest_get_local_mr(key_rsdco_pd.c_str(), ("checker-mr-" + sysvar_nid).c_str());
+
     for (auto& nid: sysvar_nids) {
         if (nid == sysvar_nid)
             continue;
+
+        replicator_conns.push_back(
+            {
+                .local_qp = hartebeest_get_local_qp(key_rsdco_pd.c_str(), rsdco_make_qp_key("replicator", sysvar_nid, nid)),
+                .remote_mr = hartebeest_get_remote_mr(rsdco_make_mr_key("replayer", sysvar_nid, nid))
+            }
+        );
+
+        checker_conns.push_back(
+            {
+                .local_qp = hartebeest_get_local_qp(key_rsdco_pd.c_str(), rsdco_make_qp_key("checker", sysvar_nid, nid)),
+                .remote_mr = hartebeest_get_remote_mr(rsdco_make_mr_key("receiver", sysvar_nid, nid))
+            }
+        );
 
         std::string done_msg = "qp-connected-" + nid;
         hartebeest_memc_wait_general(done_msg.c_str());

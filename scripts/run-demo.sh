@@ -21,8 +21,11 @@ blanc=143.248.231.40
 
 export HARTEBEEST_PARTICIPANTS=0,1
 export HARTEBEEST_NID=0
-export HARTEBEEST_EXC_IP_PORT=${blanc}:9999
+export HARTEBEEST_EXC_IP_PORT=143.248.231.40:9999
 export HARTEBEEST_CONF_PATH=./rdsco.json
+
+
+
 
 # ssh blanc "ps -eaf" | grep memcached | grep -v grep | awk '{print $2}'
 
