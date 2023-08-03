@@ -40,3 +40,16 @@ set_target_properties(
     PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/build/bin
 )
 target_link_libraries(${rsdco_demo} PUBLIC ${rsdco_lib} hartebeest)
+
+# Test Binaries
+message("-- rsdco Standalone Binary --")
+set(rsdco_standalone     rsdco-standalone)
+add_executable(
+    ${rsdco_standalone}
+    ${PROJECT_SOURCE_DIR}/src/tests/standalone.cc
+)
+set_target_properties(
+    ${rsdco_standalone} 
+    PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/build/bin
+)
+target_link_libraries(${rsdco_standalone} PUBLIC ${rsdco_lib} hartebeest)

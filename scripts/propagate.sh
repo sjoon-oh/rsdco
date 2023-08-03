@@ -21,5 +21,5 @@ cd ..
 workspace_par=`pwd`
 
 printf "Sending project to all:${workspace_par}\n"
-sftp oslab@node1:${workspace_par} <<< $"put -r ${workspace_home}"
-sftp oslab@node2:${workspace_par} <<< $"put -r ${workspace_home}"
+sftp -q oslab@node1:${workspace_par} <<< $"put -r ${workspace_home}"
+sftp -q oslab@node2:${workspace_par} <<< $"put -r ${workspace_home}"
