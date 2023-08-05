@@ -14,7 +14,9 @@
 #include "../hartebeest/src/includes/hartebeest-c.h"
 
 #include "./includes/rsdco_conn.h"
-#include "./includes/logs.h"
+#include "./includes/rsdco_reqs.h"
+
+#include "./includes/rsdco.h"
 
 // #include ""
 
@@ -154,9 +156,6 @@ void rsdco_receiver_qp_connect(std::string prefix_receiver, std::string prefix_w
         if (nid == sysvar_nid)
             continue;
 
-        // std::string local_qp_key = prefix_receiver + "-qp-from-" + nid + "-to-" + sysvar_nid;
-        // std::string remote_qp_key = prefix_writer + "-qp-from-" + nid + "-to-" + sysvar_nid;
-
         std::string local_qp_key = rsdco_make_regkey(prefix_receiver + "-qp", nid, sysvar_nid);
         std::string remote_qp_key = rsdco_make_regkey(prefix_writer + "-qp", nid, sysvar_nid);
 
@@ -198,6 +197,7 @@ void rsdco_connector_init() {
     rsdco_chkr_mr = nullptr;
 
     hartebeest_init();
+    rsdco_init_timers();
 
     sysvar_nid = std::string(hartebeest_get_sysvar("HARTEBEEST_NID"));
     sysvar_participants = std::string(hartebeest_get_sysvar("HARTEBEEST_PARTICIPANTS"));
@@ -242,6 +242,9 @@ void rsdco_connector_init() {
         local_qp = hartebeest_get_local_qp(rsdco_common_pd.c_str(), rsdco_make_regkey("replicator-qp", sysvar_nid, nid));
         remote_mr = hartebeest_get_remote_mr(rsdco_make_regkey("replayer-mr", sysvar_nid, nid));
 
+        assert(local_qp != nullptr);
+        assert(remote_mr != nullptr);
+
         rsdco_rpli_conn.push_back(
             {
                 .local_qp = local_qp,
@@ -252,6 +255,9 @@ void rsdco_connector_init() {
 
         local_qp = hartebeest_get_local_qp(rsdco_common_pd.c_str(), rsdco_make_regkey("checker-qp", sysvar_nid, nid));
         remote_mr = hartebeest_get_remote_mr(rsdco_make_regkey("receiver-mr", sysvar_nid, nid));
+        
+        assert(local_qp != nullptr);
+        assert(remote_mr != nullptr);
 
         rsdco_chkr_conn.push_back(
             {

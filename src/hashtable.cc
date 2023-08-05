@@ -9,7 +9,7 @@
 
 // #include "logger.hh"
 #include "./includes/hashtable.hh"
-#include "./includes/logs.h"
+#include "./includes/rsdco_reqs.h"
 
 #define ROTATE_LEFT_32(x, r)        ((x << r) | (x >> (32 - r)))
 

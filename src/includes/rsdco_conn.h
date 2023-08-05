@@ -13,7 +13,6 @@ extern "C" {
 // const int rsdco_buf_sz = INT_MAX
 
 #define RSDCO_BUFSZ         2147483647
-// #define RSDCO_BUFSZ         100
 #define RSCDO_ROOMS_MAX     (RSDCO_BUFSZ >> 5)
 
 #define RSDCO_RESERVED      2
@@ -26,7 +25,6 @@ struct RsdcoConnectPair {
     struct ibv_mr* remote_mr;
     int remote_node_id;
 };
-
 
 void rsdco_connector_init();
 const int rsdco_get_node_id();

@@ -11,7 +11,8 @@
 
 #include <cstdint>
 
-#include "./logs.h"
+#include "./rsdco_hotel.h"
+#include "./rsdco_reqs.h"
 
 //
 // Basic building blocks.

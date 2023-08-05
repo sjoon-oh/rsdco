@@ -8,6 +8,7 @@
 #include <random>
 
 #include <iostream>
+#include <thread>
 
 #include <unistd.h>
 
@@ -23,22 +24,45 @@ void generate_random_str(std::mt19937& generator, char* buffer, int len) {
         buffer[i] = character_set[static_cast<char>(distributor(generator))];
 }
 
-extern 
+struct Payload {
+    char buffer[512];
+};
+
+void replicate_func(std::mt19937& generator, size_t num_requests, int payload_sz, int key_sz) {
+    struct Payload local_buffer;
+    for (size_t nth_req = 0; nth_req < num_requests; nth_req++) {
+
+        generate_random_str(generator, local_buffer.buffer, payload_sz);
+        local_buffer.buffer[payload_sz - 1] = 0;
+
+        rsdco_add_request(
+            local_buffer.buffer,
+            payload_sz, 
+            local_buffer.buffer,
+            key_sz,
+            0,
+            rsdco_rule
+        );
+
+        if ((nth_req % 10000) == 0)
+            std::cout << "Count: " << nth_req << "\n";
+    }
+
+    std::cout << "Thread end\n";
+}
 
 int main(int argc, char *argv[]) {
 
-    const int max_payload_sz = 512;
-
     const int payload_sz = atoi(argv[1]);
     const int key_sz = atoi(argv[2]);
+    const int n_threads = atoi(argv[3]);
 
     const size_t default_buf_sz = RSDCO_BUFSZ;
     
-    size_t num_requests = 1000000; // Give some space
+    size_t num_requests = 500000; // Give some space
+    size_t num_req_per_thread = num_requests / n_threads;
 
-    struct Payload {
-        char buffer[max_payload_sz];
-    } local_buffer;
+    std::cout << "Reqs per threads: " << num_req_per_thread << "\n";
 
     rsdco_connector_init();
 
@@ -46,38 +70,33 @@ int main(int argc, char *argv[]) {
     
     rsdco_remote_writer_hotel_init();
     rsdco_remote_receiver_hotel_init();
+    
+    rsdco_spawn_receiver(nullptr);
 
     //
     // Initialize randomization device
     std::random_device random_device;
     std::mt19937 generator(random_device());
 
-    struct elapsed_timer* standalone_timer = elapsed_timer_register();
+    std::vector<std::thread> threads;
 
     std::cout << "Standalone test start.\n";
 
-    for (size_t nth_req = 0; nth_req < num_requests; nth_req++) {
-
-        generate_random_str(generator, local_buffer.buffer, payload_sz);
-        local_buffer.buffer[payload_sz - 1] = 0;
-
-        uint64_t ts_idx = __sync_fetch_and_add(&(standalone_timer->ts_idx), 1);
-        get_start_ts(standalone_timer, ts_idx);
-
-        rsdco_add_request_rpli(
-            local_buffer.buffer,
-            payload_sz, 
-            local_buffer.buffer,
-            key_sz,
-            0
-        );
-
-        get_end_ts(standalone_timer, ts_idx);
+    for (int i = 0; i < n_threads; i++) {
+        std::cout << "Thread spawn: " << i << "\n";
+        threads.push_back(
+            std::move(std::thread(replicate_func, std::ref(generator), num_req_per_thread, payload_sz, key_sz)));
     }
 
-    std::cout << "\n";
+    for (int i = 0; i < n_threads; i++) {
+        std::cout << "Thread waiting: " << i << "\n";
+        threads.at(i).join();
+    }
 
-    for (int sec = 30; sec > 0; sec--) {
+    // replicate_func(generator, num_requests, payload_sz, key_sz);
+    std::cout << "OK\n";
+
+    for (int sec = 10; sec > 0; sec--) {
         std::cout <<"\rWaiting for: " << sec << " sec     " << std::flush;
         sleep(1);
     }

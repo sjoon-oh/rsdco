@@ -14,3 +14,4 @@ build
 hartebeest
 .vscode
 ./*.txt
+./*.csv

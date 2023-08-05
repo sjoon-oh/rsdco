@@ -1,6 +1,7 @@
 
 #include <stdio.h>
 #include <assert.h>
+#include <unistd.h>
 
 #include <infiniband/verbs.h> // OFED IB verbs
 
@@ -18,7 +19,7 @@ int main() {
     rsdco_remote_writer_hotel_init();
     rsdco_remote_receiver_hotel_init();
 
-    struct elapsed_timer* local_timer = elapsed_timer_register();
+    rsdco_spawn_receiver(NULL);
 
     size_t n_req = RSDCO_BUFSZ / (120 + payload_sz); // Give some space
 
@@ -30,12 +31,14 @@ int main() {
 
         strcpy(payload, predefined_str);
         for (int i = 0; i < 200; i++) {
-
-            uint64_t ts_idx = __sync_fetch_and_add(&(local_timer->ts_idx), 1);
-            get_start_ts(local_timer, ts_idx);
-
-            rsdco_add_request_rpli(payload, 32, payload + 2, 2, 0);
-            get_end_ts(local_timer, ts_idx);
+            rsdco_add_request(
+                payload,
+                32, 
+                payload,
+                16,
+                0,
+                rsdco_rule
+            );
         }
 
         sleep(10);
@@ -43,7 +46,7 @@ int main() {
 
     }
     else {
-        rsdco_replayer_detect("replayer-mr(0->1)");
+        // rsdco_detect_poll("replayer-mr(0->1)");
     }
 
     return 0;
