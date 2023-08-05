@@ -15,3 +15,7 @@ int rsdco_rule(uint32_t hashed) {
 int rsdco_rule_always_owner(uint32_t hashed) {
     return rsdco_sysvar_nid_int;
 }
+
+int rsdco_rule_skew_single(uint32_t hashed) {
+    return 0;
+}

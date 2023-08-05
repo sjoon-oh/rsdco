@@ -41,7 +41,7 @@ void replicate_func(std::mt19937& generator, size_t num_requests, int payload_sz
             local_buffer.buffer,
             key_sz,
             0,
-            rsdco_rule
+            rsdco_rule_skew_single
         );
 
         if ((nth_req % 10000) == 0)
