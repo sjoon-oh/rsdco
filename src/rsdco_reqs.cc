@@ -8,7 +8,7 @@
 #include <stdlib.h>
 
 
-#include "../../hartebeest/src/includes/hartebeest-c.h"
+#include "../hartebeest/src/includes/hartebeest-c.h"
 
 #include "./includes/hashtable.hh"
 #include "./includes/rsdco_reqs.h"
@@ -62,6 +62,10 @@ int rsdco_slot_hash_comp(void* a, void* b) {
 }
 
 soren::hash::LfHashTable rsdco_depchecker(rdsco_ht_nbuckets, rsdco_slot_hash_comp);
+
+uint32_t rsdco_hash(const char* buf, int buf_len) {
+    return rsdco_depchecker.doHash(buf, buf_len);
+}
 
 void rsdco_try_insert(struct Slot* slot) {
     bool is_samekey, is_success;

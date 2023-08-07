@@ -13,6 +13,8 @@
 
 #include <infiniband/verbs.h>
 
+#include "../hartebeest/src/includes/hartebeest-c.h"
+
 #include "./includes/rsdco_conn.h"
 #include "./includes/rsdco_hotel.h"
 #include "./includes/rsdco_reqs.h"

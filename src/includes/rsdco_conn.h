@@ -2,8 +2,6 @@
 
 #include <limits.h>
 
-#include "../hartebeest/src/includes/hartebeest-c.h"
-
 #include <infiniband/verbs.h>
 #ifdef __cplusplus
 extern "C" {

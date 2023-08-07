@@ -43,6 +43,7 @@ void rsdco_detect_poll(const char*, struct ibv_mr*, void (*)(struct MemoryHotel*
 void rsdco_detect_action_rply(struct MemoryHotel*, uint32_t, uint32_t, void (*)(void*, uint16_t));
 void rsdco_detect_action_rcvr(struct MemoryHotel*, uint32_t, uint32_t, void (*)(void*, uint16_t));
 
+uint32_t rsdco_hash(const char*, int);
 
 #ifdef __cplusplus
 }

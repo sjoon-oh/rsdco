@@ -25,8 +25,13 @@ workspace_home=`pwd`
 exp_home="${workspace_home}/experiments"
 redis_home="${exp_home}/redis-7.0.5"
 
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:${workspace_home}/lib
-export LIBRARY_PATH=${workspace_home}/lib:$LIBRARY_PATH
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:${workspace_home}/build/lib
+export LIBRARY_PATH=${workspace_home}/build/lib:$LIBRARY_PATH
+
+# echo $LD_LIBRARY_PATH
+# echo $LIBRARY_PATH
+
+cp hartebeest/build/lib/libhartebeest.so ./build/lib/
 
 #
 # Option 0: clean source directory, and the binary.
@@ -103,4 +108,46 @@ if [[ "${args}" == *"patch"* ]]; then
     # patch -p0 -d ${redis_home} -s < ../redis-7.0.5.patch
     git apply ../redis-7.0.5.patch
     printf "${normalc}Patched\n."
+fi
+
+#
+# Option 4: Apply the patch.
+if [[ "${args}" == *"make"* ]]; then
+    printf "${normalc}3. -- Building REDIS -- \n"
+    printf "${normalc}Current directory: ${redis_home} \n"
+
+        if [ ! -d "${redis_home}" ]; then
+        printf "${warning}No Redis source directory found.\n"
+        exit
+    fi
+
+    make -j 16
+    cp src/redis-server ${workspace_home}/build/bin/rsdco-redis
+fi
+
+#
+# Option 5: Apply the patch.
+if [[ "${args}" == *"run"* ]]; then
+    printf "${normalc}3. -- Executing REDIS -- \n"
+    printf "${normalc}Current directory: ${redis_home} \n"
+
+    if [ ! -f "${workspace_home}/build/bin/rsdco-redis" ]; then
+        printf "${warning}No Redis binary file found. Did you compile?\n"
+        exit
+    fi
+
+    if [ -f "${workspace_home}/dump.rdb" ]; then
+        printf "${normalc}Redis persistence removed.\n"
+    fi
+
+    export HARTEBEEST_PARTICIPANTS=0,1,2
+    export HARTEBEEST_EXC_IP_PORT=143.248.39.61:9999
+    export HARTEBEEST_CONF_PATH=${workspace_home}/rdsco.json
+
+    ${workspace_home}/build/bin/rsdco-redis \
+        --port 6379 \
+        --protected-mode no \
+        --io-threads-do-reads yes \
+        --save "" --appendonly no \
+        # --io-threads 4
 fi

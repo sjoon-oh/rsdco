@@ -8,7 +8,7 @@
 extern int rsdco_sysvar_nid_int;
 extern std::vector<std::string> rsdco_sysvar_nids;
 
-int rsdco_rule(uint32_t hashed) {
+int rsdco_rule_balanced(uint32_t hashed) {
     return (hashed % rsdco_sysvar_nids.size());
 }
 

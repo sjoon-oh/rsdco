@@ -37,7 +37,7 @@ int main() {
                 payload,
                 16,
                 0,
-                rsdco_rule
+                rsdco_rule_balanced
             );
         }
 
