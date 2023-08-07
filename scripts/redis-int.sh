@@ -106,7 +106,7 @@ if [[ "${args}" == *"patch"* ]]; then
     fi
     
     # patch -p0 -d ${redis_home} -s < ../redis-7.0.5.patch
-    git apply ../redis-7.0.5.patch
+    git apply --reject --whitespace=fix ../redis-7.0.5.patch
     printf "${normalc}Patched\n."
 fi
 

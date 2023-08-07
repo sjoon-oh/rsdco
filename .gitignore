@@ -15,3 +15,4 @@ hartebeest
 .vscode
 ./*.txt
 ./*.csv
+./experiments/redis-7.0.5
