@@ -15,3 +15,9 @@ void rsdco_get_ts_end_rpli(uint64_t);
 
 uint64_t rsdco_get_ts_start_chkr();
 void rsdco_get_ts_end_chkr(uint64_t);
+
+uint64_t rsdco_get_ts_start_rpli_core();
+void rsdco_get_ts_end_rpli_core(uint64_t);
+
+uint64_t rsdco_get_ts_start_chkr_core();
+void rsdco_get_ts_end_chkr_core(uint64_t);

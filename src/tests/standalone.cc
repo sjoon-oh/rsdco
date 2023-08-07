@@ -25,7 +25,7 @@ void generate_random_str(std::mt19937& generator, char* buffer, int len) {
 }
 
 struct Payload {
-    char buffer[512];
+    char buffer[4096];
 };
 
 void replicate_func(std::mt19937& generator, size_t num_requests, int payload_sz, int key_sz) {
@@ -44,6 +44,12 @@ void replicate_func(std::mt19937& generator, size_t num_requests, int payload_sz
             rsdco_rule_skew_single
         );
 
+        struct timespec start, end;
+        clock_gettime(CLOCK_MONOTONIC, &start);
+        do {
+            clock_gettime(CLOCK_MONOTONIC, &end);
+        } while((get_elapsed_nsec(end, start) < 10000));
+
         if ((nth_req % 10000) == 0)
             std::cout << "Count: " << nth_req << "\n";
     }
@@ -59,7 +65,10 @@ int main(int argc, char *argv[]) {
 
     const size_t default_buf_sz = RSDCO_BUFSZ;
     
-    size_t num_requests = 500000; // Give some space
+    // 2,147,483,647
+    // 1,000,000
+    
+    size_t num_requests = 1000000; // Give some space
     size_t num_req_per_thread = num_requests / n_threads;
 
     std::cout << "Reqs per threads: " << num_req_per_thread << "\n";
@@ -96,7 +105,7 @@ int main(int argc, char *argv[]) {
     // replicate_func(generator, num_requests, payload_sz, key_sz);
     std::cout << "OK\n";
 
-    for (int sec = 10; sec > 0; sec--) {
+    for (int sec = 30; sec > 0; sec--) {
         std::cout <<"\rWaiting for: " << sec << " sec     " << std::flush;
         sleep(1);
     }

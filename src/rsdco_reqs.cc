@@ -226,7 +226,9 @@ void rsdco_request_to_rpli(void* buf, uint16_t buf_len, void* key, uint16_t key_
             }
         }
 
+        uint64_t idx = rsdco_get_ts_start_rpli_core();
         rsdco_rdma_write_rpli(cur_slot->buf, cur_slot->buf_len, hashed, msg);
+        rsdco_get_ts_end_rpli_core(idx);
 
         cur_slot->is_ready = 0;
         rpli_reqs.slot[slot_idx].is_ready = 0;
@@ -268,6 +270,8 @@ void rsdco_request_to_chkr(void* buf, uint16_t buf_len, void* key, uint16_t key_
     chkr_reqs.slot[slot_idx].is_ready = 1;
 
     __sync_fetch_and_add(&chkr_reqs.slot[slot_idx].is_blocked, 1);
+    
+    uint64_t idx = rsdco_get_ts_start_chkr_core();
     rsdco_rdma_write_chkr(
         chkr_reqs.slot[slot_idx].buf,
         chkr_reqs.slot[slot_idx].buf_len,
@@ -275,6 +279,8 @@ void rsdco_request_to_chkr(void* buf, uint16_t buf_len, void* key, uint16_t key_
         owned
     );
     
+    rsdco_get_ts_end_chkr_core(idx);
+
     while (__sync_fetch_and_add(&chkr_reqs.slot[slot_idx].is_blocked, 0) == 1)
         ;
     
