@@ -16,3 +16,4 @@ hartebeest
 ./*.txt
 ./*.csv
 ./experiments/redis-7.0.5
+./experiments/memcached-1.5.19

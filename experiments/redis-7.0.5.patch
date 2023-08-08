@@ -12,7 +12,7 @@ index e4f7d90..9f8cc96 100644
  
  # Linux ARM32 needs -latomic at linking time
 diff --git a/src/server.c b/src/server.c
-index b0cef88..621f47e 100644
+index b0cef88..1b44a23 100644
 --- a/src/server.c
 +++ b/src/server.c
 @@ -70,6 +70,11 @@
@@ -31,9 +31,9 @@ index b0cef88..621f47e 100644
   */
  
  int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
-+    
++
 +    pthread_mutex_lock(&call_lock);
-+    
++
      int j;
      UNUSED(eventLoop);
      UNUSED(id);
@@ -73,12 +73,12 @@ index b0cef88..621f47e 100644
 +
 +        if (strcmp(c->argv[0]->ptr, "HMSET") == 0)
 +            hashed = rsdco_hash(c->argv[1]->ptr, strlen(c->argv[1]->ptr));
-+        
++
 +        else if (strcmp(c->argv[0]->ptr, "ZADD") == 0)
 +            hashed = rsdco_hash(c->argv[3]->ptr, strlen(c->argv[3]->ptr));
 +
 +        rsdco_add_request(
-+            c->querybuf, sdslen(c->querybuf), 
++            c->querybuf, sdslen(c->querybuf),
 +            NULL, 0, hashed,
 +            rsdco_rule_balanced
 +        );
@@ -91,7 +91,7 @@ index b0cef88..621f47e 100644
  int prepareForShutdown(int flags) {
      if (isShutdownInitiated()) return C_ERR;
  
-+    elapsed_timer_record_manual();
++    rsdco_dump_timestamps();
 +
      /* When SHUTDOWN is called while the server is loading a dataset in
       * memory we need to make sure no attempt is performed to save
@@ -103,10 +103,10 @@ index b0cef88..621f47e 100644
 +    rsdco_connector_init();
 +
 +    rsdco_local_hotel_init();
-+    
++
 +    rsdco_remote_writer_hotel_init();
 +    rsdco_remote_receiver_hotel_init();
-+    
++
 +    rsdco_spawn_receiver(NULL);
 +
  #ifdef REDIS_TEST

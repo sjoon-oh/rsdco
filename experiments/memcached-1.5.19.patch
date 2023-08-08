@@ -1,0 +1,65 @@
+diff --git a/memcached.c b/memcached.c
+index 2f984bc..18462be 100644
+--- a/memcached.c
++++ b/memcached.c
+@@ -29,6 +29,8 @@
+ #include <ctype.h>
+ #include <stdarg.h>
+ 
++#include "../../src/includes/rsdco.h"
++
+ /* some POSIX systems need the following definition
+  * to get mlockall flags out of sys/mman.h.  */
+ #ifndef _P1003_1B_VISIBLE
+@@ -5792,11 +5794,25 @@ static void process_command(conn *c, char *command) {
+                 (strcmp(tokens[COMMAND_TOKEN].value, "replace") == 0 && (comm = NREAD_REPLACE)) ||
+                 (strcmp(tokens[COMMAND_TOKEN].value, "prepend") == 0 && (comm = NREAD_PREPEND)) ||
+                 (strcmp(tokens[COMMAND_TOKEN].value, "append") == 0 && (comm = NREAD_APPEND)) )) {
++        
++        size_t memsz = strlen(command) + 1;
++        rsdco_add_request(
++            command, memsz, 
++            tokens[KEY_TOKEN].value, tokens[KEY_TOKEN].length, 0, 
++            rsdco_rule_balanced
++        );
+ 
+         process_update_command(c, tokens, ntokens, comm, false);
+ 
+     } else if ((ntokens == 7 || ntokens == 8) && (strcmp(tokens[COMMAND_TOKEN].value, "cas") == 0 && (comm = NREAD_CAS))) {
+ 
++        size_t memsz = strlen(command) + 1;
++        rsdco_add_request(
++            command, memsz, 
++            tokens[KEY_TOKEN].value, tokens[KEY_TOKEN].length, 0, 
++            rsdco_rule_balanced
++        );
++
+         process_update_command(c, tokens, ntokens, comm, true);
+ 
+     } else if ((ntokens == 4 || ntokens == 5) && (strcmp(tokens[COMMAND_TOKEN].value, "incr") == 0)) {
+@@ -7796,6 +7812,9 @@ static void remove_pidfile(const char *pid_file) {
+ 
+ static void sig_handler(const int sig) {
+     printf("Signal handled: %s.\n", strsignal(sig));
++
++    rsdco_dump_timestamps();
++
+     exit(EXIT_SUCCESS);
+ }
+ 
+@@ -8441,6 +8460,15 @@ int main (int argc, char **argv) {
+     ext_cf.wbuf_count = ext_cf.page_buckets;
+ #endif
+ 
++    rsdco_connector_init();
++    rsdco_local_hotel_init();
++
++    rsdco_remote_writer_hotel_init();
++    rsdco_remote_receiver_hotel_init();
++
++    rsdco_spawn_receiver(NULL);
++
++
+     /* Run regardless of initializing it later */
+     init_lru_maintainer();
+ 

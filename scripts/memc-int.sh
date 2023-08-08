@@ -108,3 +108,42 @@ if [[ "${args}" == *"patch"* ]]; then
     printf "${normalc}Patched\n."
 fi
 
+#
+# Option 4: Apply the patch.
+if [[ "${args}" == *"make"* ]]; then
+    printf "${normalc}3. -- Building Memcached -- \n"
+    printf "${normalc}Current directory: ${memc_home} \n"
+
+        if [ ! -d "${memc_home}" ]; then
+        printf "${warning}No Memcached source directory found.\n"
+        exit
+    fi
+
+    ./configure
+    sed -i "s|LIBS = -lhugetlbfs -levent|LIBS = -lhugetlbfs -levent\nLIBS += -lrsdco -lhartebeest -L ${workspace_home}/build/lib|" Makefile
+
+    make -j 16
+    cp memcached ${workspace_home}/build/bin/rsdco-memcached
+fi
+
+#
+# Option 5: Apply the patch.
+if [[ "${args}" == *"run"* ]]; then
+    printf "${normalc}3. -- Executing Memcached -- \n"
+    printf "${normalc}Current directory: ${memc_home} \n"
+
+    if [ ! -f "${workspace_home}/build/bin/rsdco-memcached" ]; then
+        printf "${warning}No Memcached binary file found. Did you compile?\n"
+        exit
+    fi
+
+    export HARTEBEEST_PARTICIPANTS=0,1,2
+    export HARTEBEEST_EXC_IP_PORT=143.248.39.61:9999
+    export HARTEBEEST_CONF_PATH=${workspace_home}/rdsco.json
+
+    ${workspace_home}/build/bin/rsdco-memcached \
+        -p 6379 \
+        -t 4 \
+        -m 32768
+        # --io-threads 4
+fi
