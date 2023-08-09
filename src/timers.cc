@@ -8,7 +8,7 @@
 #include <signal.h>
 #include "./includes/timers.h"
 
-struct elapsed_timer timer_arr[10];
+struct elapsed_timer timer_arr[20];
 int32_t num_timers = 0;
 
 void elapsed_timer_sig_handler(int signo);

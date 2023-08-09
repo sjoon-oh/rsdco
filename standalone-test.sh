@@ -1,7 +1,7 @@
 #!/bin/bash
 
 nthreads="
-1
+3
 "
 
 key_len=16
@@ -36,6 +36,8 @@ for nthreads in $nthreads; do
         mv dump-3.txt dump-chkr-core-$payload-$key_len-$nthreads.txt # Checker Core Latency
 
         mv dump-aggr.txt dump-aggr-$payload-$key_len-$nthreads.txt
+
+        mv dump-4.txt dump-realtime-$payload-$key_len-$nthreads.txt
     done
 done
 

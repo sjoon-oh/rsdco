@@ -41,14 +41,14 @@ void replicate_func(std::mt19937& generator, size_t num_requests, int payload_sz
             local_buffer.buffer,
             key_sz,
             0,
-            rsdco_rule_skew_single
+            rsdco_rule_balanced
         );
 
-        struct timespec start, end;
-        clock_gettime(CLOCK_MONOTONIC, &start);
-        do {
-            clock_gettime(CLOCK_MONOTONIC, &end);
-        } while((get_elapsed_nsec(end, start) < 10000));
+        // struct timespec start, end;
+        // clock_gettime(CLOCK_MONOTONIC, &start);
+        // do {
+        //     clock_gettime(CLOCK_MONOTONIC, &end);
+        // } while((get_elapsed_nsec(end, start) < 10000));
 
         if ((nth_req % 10000) == 0)
             std::cout << "Count: " << nth_req << "\n";

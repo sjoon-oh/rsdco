@@ -144,10 +144,19 @@ if [[ "${args}" == *"run"* ]]; then
     export HARTEBEEST_EXC_IP_PORT=143.248.39.61:9999
     export HARTEBEEST_CONF_PATH=${workspace_home}/rdsco.json
 
+    cd ${workspace_home}
+
     ${workspace_home}/build/bin/rsdco-redis \
         --port 6379 \
         --protected-mode no \
         --io-threads-do-reads yes \
         --save "" --appendonly no \
         # --io-threads 4
+
+    mv dump-0.txt dump-redis-rpli.txt
+    mv dump-1.txt dump-redis-chkr.txt
+    mv dump-2.txt dump-redis-rpli-core.txt
+    mv dump-3.txt dump-redis-chkr-core.txt
+
+    python3 analysis-dump.py
 fi

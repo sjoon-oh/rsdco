@@ -26,6 +26,9 @@ void rsdco_get_ts_end_rpli_core(uint64_t);
 uint64_t rsdco_get_ts_start_chkr_core();
 void rsdco_get_ts_end_chkr_core(uint64_t);
 
+uint64_t rsdco_get_ts_start_aggr();
+void rsdco_get_ts_end_aggr(uint64_t);
+
 void rsdco_dump_timestamps();
 
 #ifdef __cplusplus

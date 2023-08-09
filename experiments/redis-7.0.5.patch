@@ -12,7 +12,7 @@ index e4f7d90..9f8cc96 100644
  
  # Linux ARM32 needs -latomic at linking time
 diff --git a/src/server.c b/src/server.c
-index b0cef88..1b44a23 100644
+index b0cef88..d8df2e7 100644
 --- a/src/server.c
 +++ b/src/server.c
 @@ -70,6 +70,11 @@
@@ -96,7 +96,16 @@ index b0cef88..1b44a23 100644
      /* When SHUTDOWN is called while the server is loading a dataset in
       * memory we need to make sure no attempt is performed to save
       * the dataset on shutdown (otherwise it could overwrite the current DB
-@@ -6780,6 +6812,15 @@ int main(int argc, char **argv) {
+@@ -6236,6 +6268,8 @@ int changeListenPort(int port, socketFds *sfd, aeFileProc *accept_handler) {
+ static void sigShutdownHandler(int sig) {
+     char *msg;
+ 
++    rsdco_dump_timestamps();
++
+     switch (sig) {
+     case SIGINT:
+         msg = "Received SIGINT scheduling shutdown...";
+@@ -6780,6 +6814,15 @@ int main(int argc, char **argv) {
      int j;
      char config_from_stdin = 0;
  

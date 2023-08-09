@@ -301,11 +301,11 @@ void rsdco_add_request(void* buf, uint16_t buf_len, void* key, uint16_t key_len,
     if (key != nullptr)
         hkey = rsdco_depchecker.doHash(key, key_len);
 
-    uint64_t ts_idx;
+    uint64_t ts_idx, aggr_idx;
     int owned = ruler(hkey);
 
     // printf("Add request: %ld, owned by %ld\n", hkey, owned);
-
+    aggr_idx = rsdco_get_ts_start_aggr();
     if (owned == rsdco_sysvar_nid_int) {
         ts_idx = rsdco_get_ts_start_rpli();
         rsdco_request_to_rpli(buf, buf_len, key, key_len, hkey, RSDCO_MSG_PURE);
@@ -316,6 +316,7 @@ void rsdco_add_request(void* buf, uint16_t buf_len, void* key, uint16_t key_len,
         rsdco_request_to_chkr(buf, buf_len, key, key_len, hkey, owned);
         rsdco_get_ts_end_chkr(ts_idx);
     }
+    rsdco_get_ts_end_aggr(aggr_idx);
 }
 
 void rsdco_detect_poll(
