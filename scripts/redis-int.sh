@@ -157,6 +157,7 @@ if [[ "${args}" == *"run"* ]]; then
     mv dump-1.txt dump-redis-chkr.txt
     mv dump-2.txt dump-redis-rpli-core.txt
     mv dump-3.txt dump-redis-chkr-core.txt
+    mv dump-4.txt dump-redis-realtime.txt
 
     python3 analysis-dump.py
 fi

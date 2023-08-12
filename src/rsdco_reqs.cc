@@ -295,7 +295,7 @@ void rsdco_request_to_chkr(void* buf, uint16_t buf_len, void* key, uint16_t key_
 }
 
 
-void rsdco_add_request(void* buf, uint16_t buf_len, void* key, uint16_t key_len, uint32_t hashed, int (*ruler)(uint32_t)) {
+int rsdco_add_request(void* buf, uint16_t buf_len, void* key, uint16_t key_len, uint32_t hashed, int (*ruler)(uint32_t)) {
     
     uint32_t hkey = hashed;
     if (key != nullptr)
@@ -315,8 +315,14 @@ void rsdco_add_request(void* buf, uint16_t buf_len, void* key, uint16_t key_len,
         ts_idx = rsdco_get_ts_start_chkr();
         rsdco_request_to_chkr(buf, buf_len, key, key_len, hkey, owned);
         rsdco_get_ts_end_chkr(ts_idx);
+
     }
     rsdco_get_ts_end_aggr(aggr_idx);
+
+    if (owned == rsdco_sysvar_nid_int)
+        return 0;
+
+    else return 1;
 }
 
 void rsdco_detect_poll(
@@ -342,7 +348,7 @@ void rsdco_detect_poll(
     uintptr_t canary;
     uint8_t canary_val;
 
-    uint32_t prev_header_room;
+    uint32_t prev_header_room = 1;
 
     while (1) {
         
@@ -399,7 +405,7 @@ void rsdco_detect_action_rply(struct MemoryHotel* hotel, uint32_t header_room, u
         return;
     }
 
-    if (user_action)
+    if (user_action && (prev_header_room != 1)) // Header room cannot be 1.
         user_action(prev_payload, prev_header->buf_len);
 }
 

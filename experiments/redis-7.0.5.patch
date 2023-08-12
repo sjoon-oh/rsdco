@@ -12,7 +12,7 @@ index e4f7d90..9f8cc96 100644
  
  # Linux ARM32 needs -latomic at linking time
 diff --git a/src/server.c b/src/server.c
-index b0cef88..d8df2e7 100644
+index b0cef88..2ed9898 100644
 --- a/src/server.c
 +++ b/src/server.c
 @@ -70,6 +70,11 @@
@@ -105,7 +105,60 @@ index b0cef88..d8df2e7 100644
      switch (sig) {
      case SIGINT:
          msg = "Received SIGINT scheduling shutdown...";
-@@ -6780,6 +6814,15 @@ int main(int argc, char **argv) {
+@@ -6775,11 +6809,68 @@ redisTestProc *getTestProcByName(const char *name) {
+ }
+ #endif
+ 
++// Replay function
++void rscdo_redis_replay(void* buf, uint16_t bufsz) {
++
++    int tokn, j;
++    client* fake_client = createClient(NULL); // Unconnected client
++
++    fake_client->flags = CLIENT_SCRIPT | CLIENT_DENY_BLOCKING;
++
++    sdsfree(fake_client->querybuf);
++    fake_client->querybuf = sdsnewlen(buf, bufsz);
++
++    processMultibulkBuffer(fake_client);
++
++    fake_client->cmd = fake_client->lastcmd = fake_client->realcmd = lookupCommand(fake_client->argv, fake_client->argc);
++    
++    pthread_mutex_lock(&call_lock);
++    fake_client->cmd->proc(fake_client);
++    pthread_mutex_unlock(&call_lock);
++
++    sdsfree(fake_client->querybuf);
++    listRelease(fake_client->reply);
++    dictRelease(fake_client->bpop.keys);
++    listRelease(fake_client->watched_keys);
++
++    dictRelease(fake_client->pubsub_channels);
++    listRelease(fake_client->pubsub_patterns);
++    dictRelease(fake_client->pubsubshard_channels);
++
++    zfree(fake_client->buf);
++    freeClientArgv(fake_client);
++    freeClientOriginalArgv(fake_client);
++
++    if (fake_client->deferred_reply_errors)
++        listRelease(fake_client->deferred_reply_errors);
++
++    if (fake_client->mem_usage_bucket) {
++        fake_client->mem_usage_bucket->mem_usage_sum -= fake_client->last_memory_usage;
++        listDelNode(fake_client->mem_usage_bucket->clients, fake_client->mem_usage_bucket_node);
++    }
++
++    freeClientMultiState(fake_client);
++    sdsfree(fake_client->peerid);
++    sdsfree(fake_client->sockname);
++    sdsfree(fake_client->slave_addr);
++
++    zfree(fake_client);
++}
++
+ int main(int argc, char **argv) {
+     struct timeval tv;
      int j;
      char config_from_stdin = 0;
  
@@ -116,7 +169,7 @@ index b0cef88..d8df2e7 100644
 +    rsdco_remote_writer_hotel_init();
 +    rsdco_remote_receiver_hotel_init();
 +
-+    rsdco_spawn_receiver(NULL);
++    rsdco_spawn_receiver(rscdo_redis_replay);
 +
  #ifdef REDIS_TEST
      if (argc >= 3 && !strcasecmp(argv[1], "test")) {
