@@ -7,6 +7,8 @@
 #include <assert.h>
 #include <stdlib.h>
 
+#define BATCH_ENABLED
+#undef BATCH_ENABLED
 
 #include "../hartebeest/src/includes/hartebeest-c.h"
 
@@ -83,12 +85,9 @@ void rsdco_try_insert(struct Slot* slot) {
 }
 
 
-void rsdco_rdma_write_rpli(void* local_buffer, uint16_t buf_len, uint32_t hashed, uint8_t msg) {
+uint32_t rsdco_copy_request(void* local_buffer, uint16_t buf_len, uint32_t hashed, uint8_t msg, struct MemoryHotel* local_hotel) {
     
-    assert(rsdco_rpli_mr != nullptr);
-
-    struct MemoryHotel* hotel = 
-        reinterpret_cast<struct MemoryHotel*>(rsdco_rpli_mr->addr);
+    struct MemoryHotel* hotel = local_hotel;
 
     // Write Header
     uint32_t header_room = hotel->next_room_free;
@@ -112,6 +111,19 @@ void rsdco_rdma_write_rpli(void* local_buffer, uint16_t buf_len, uint32_t hashed
     std::memcpy(payload, local_buffer, buf_len);
     std::memcpy(reinterpret_cast<void*>(canary), &canary_val, sizeof(uint8_t));
 
+    return header_room; // Return the starting header room
+}
+
+void rsdco_rdma_write_single_rpli(void* local_buffer, uint16_t buf_len, uint32_t hashed, uint8_t msg) {
+    
+    assert(rsdco_rpli_mr != nullptr);
+
+    struct MemoryHotel* hotel = 
+        reinterpret_cast<struct MemoryHotel*>(rsdco_rpli_mr->addr);
+
+    uint32_t header_room = rsdco_copy_request(local_buffer, buf_len, hashed, msg, hotel);
+    struct LogHeader* header = reinterpret_cast<struct LogHeader*>(&(hotel->room[header_room]));
+
     for (auto& ctx: rsdco_rpli_conn) {
 
         struct MemoryHotel* remote_hotel = reinterpret_cast<struct MemoryHotel*>(ctx.remote_mr->addr);
@@ -128,33 +140,106 @@ void rsdco_rdma_write_rpli(void* local_buffer, uint16_t buf_len, uint32_t hashed
     hotel->reserved[1] += 1;
 }
 
-void rsdco_rdma_write_chkr(void* local_buffer, uint16_t buf_len, uint32_t hashed, int owned) {
+void rsdco_rdma_write_multi_rpli(uint32_t slotidx) {
+
+    // Starting slot index
+    struct MemoryHotel* hotel = 
+        reinterpret_cast<struct MemoryHotel*>(rsdco_rpli_mr->addr);
+
+    // First, copy one.
+    uint32_t first_header_room = rsdco_copy_request(
+        rpli_reqs.slot[slotidx].buf,
+        rpli_reqs.slot[slotidx].buf_len,
+        rpli_reqs.slot[slotidx].hashed, 
+        rpli_reqs.slot[slotidx].msg, hotel);
+    uint32_t last_header_room = first_header_room;
+
+    struct LogHeader* first_header = reinterpret_cast<struct LogHeader*>(&(hotel->room[first_header_room]));
+
+    hotel->reserved[1] += 1;
+
+    int rel_cnt = 1;
+    for (uint32_t i = (slotidx + 1); i < SLOT_MAX; i++) {
+        
+        if (rpli_reqs.slot[i].is_ready == 1) {
+            if (IS_MARKED_AS_DELETED(rpli_reqs.slot[i].next_slot))
+                ;
+            else {
+                rsdco_copy_request(
+                    rpli_reqs.slot[i].buf,
+                    rpli_reqs.slot[i].buf_len,
+                    rpli_reqs.slot[i].hashed, 
+                    rpli_reqs.slot[i].msg, hotel);
+            
+                hotel->reserved[1] += 1;
+            }
+            
+            rel_cnt++;
+            // rpli_reqs.slot[i].is_blocked = 0;
+            // rpli_reqs.slot[i].is_ready = 0;
+        }
+        else
+            break;
+    }
+
+    // Linear, linked case
+    if (first_header_room <= last_header_room) {
+        for (auto& ctx: rsdco_rpli_conn) {
+            struct MemoryHotel* remote_hotel = reinterpret_cast<struct MemoryHotel*>(ctx.remote_mr->addr);
+            void* remote_header = &(remote_hotel->room[first_header_room]);
+
+            size_t write_sz = sizeof(uint32_t) * (hotel->next_room_free - first_header_room);
+
+            hartebeest_rdma_post_single_fast(
+                ctx.local_qp, first_header, remote_header, write_sz, IBV_WR_RDMA_WRITE, rsdco_rpli_mr->lkey, ctx.remote_mr->rkey, 0
+            );
+
+            hartebeest_rdma_send_poll(ctx.local_qp);
+        }
+    }
+    else {
+        for (auto& ctx: rsdco_rpli_conn) {
+            struct MemoryHotel* remote_hotel = reinterpret_cast<struct MemoryHotel*>(ctx.remote_mr->addr);
+            void* remote_header = &(remote_hotel->room[first_header_room]);
+
+            size_t write_sz = sizeof(uint32_t) * (RSDCO_LOGIDX_END - first_header_room + 1);
+
+            hartebeest_rdma_post_single_fast(
+                ctx.local_qp, first_header, remote_header, write_sz, IBV_WR_RDMA_WRITE, rsdco_rpli_mr->lkey, ctx.remote_mr->rkey, 0
+            );
+
+            hartebeest_rdma_send_poll(ctx.local_qp);
+        }
+
+        for (auto& ctx: rsdco_rpli_conn) {
+            struct MemoryHotel* remote_hotel = reinterpret_cast<struct MemoryHotel*>(ctx.remote_mr->addr);
+            void* remote_header = &(remote_hotel->room[0]);
+
+            size_t write_sz = sizeof(uint32_t) * (hotel->next_room_free);
+
+            hartebeest_rdma_post_single_fast(
+                ctx.local_qp,  &(hotel->room[0]), remote_header, write_sz, IBV_WR_RDMA_WRITE, rsdco_rpli_mr->lkey, ctx.remote_mr->rkey, 0
+            );
+
+            hartebeest_rdma_send_poll(ctx.local_qp);
+        }
+    }
+
+    for (uint32_t i = slotidx; i < (slotidx + rel_cnt); i++) {
+        rpli_reqs.slot[i].is_blocked = 0;
+        rpli_reqs.slot[i].is_ready = 0;
+    }
+}
+
+void rsdco_rdma_write_single_chkr(void* local_buffer, uint16_t buf_len, uint32_t hashed, int owned) {
     
     assert(rsdco_chkr_mr != nullptr);
 
     struct MemoryHotel* hotel = 
         reinterpret_cast<struct MemoryHotel*>(rsdco_chkr_mr->addr);
 
-    // Write Header
-    uint32_t header_room = hotel->next_room_free;
+    uint32_t header_room = rsdco_copy_request(local_buffer, buf_len, hashed, 0, hotel);
     struct LogHeader* header = reinterpret_cast<struct LogHeader*>(&(hotel->room[header_room]));
-    hotel->next_room_free += 2;
-
-    header->proposal = hotel->reserved[1];
-    header->buf_len = buf_len;
-    header->hashed = hashed;
-
-    // Write payload
-    uint32_t payload_room = hotel->next_room_free;
-    uint32_t* payload = &(hotel->room[payload_room]);
-    
-    hotel->next_room_free = rsdco_next_free_room(payload_room, buf_len + sizeof(uint8_t));
-
-    uintptr_t canary = reinterpret_cast<uintptr_t>(payload) + buf_len;
-    uint8_t canary_val = RSDCO_CANARY;
-
-    std::memcpy(payload, local_buffer, buf_len);
-    std::memcpy(reinterpret_cast<void*>(canary), &canary_val, sizeof(uint8_t));
 
     struct MemoryHotel* remote_hotel;
     void* remote_header;
@@ -199,6 +284,8 @@ void rsdco_request_to_rpli(void* buf, uint16_t buf_len, void* key, uint16_t key_
     rpli_reqs.slot[slot_idx].key_len = key_len;
 
     rpli_reqs.slot[slot_idx].hashed = hashed;
+    rpli_reqs.slot[slot_idx].msg = msg;
+
     rpli_reqs.slot[slot_idx].is_ready = 1;
     rpli_reqs.slot[slot_idx].is_blocked = 1;
 
@@ -212,9 +299,8 @@ void rsdco_request_to_rpli(void* buf, uint16_t buf_len, void* key, uint16_t key_
 
     if (rpli_reqs.slot[slot_idx].is_ready == 1) {
 
+#ifndef BATCH_ENABLED
         if (IS_MARKED_AS_DELETED(rpli_reqs.slot[slot_idx].next_slot)) {
-            // printf("Marked detected, searching for latest link... : %ld\n", hashed);
-
             while (cur_slot != &bucket->head) {
 
                 next_slot = cur_slot->next_slot;
@@ -229,9 +315,14 @@ void rsdco_request_to_rpli(void* buf, uint16_t buf_len, void* key, uint16_t key_
                 }
             }
         }
+#endif
 
         uint64_t idx = rsdco_get_ts_start_rpli_core();
-        rsdco_rdma_write_rpli(cur_slot->buf, cur_slot->buf_len, hashed, msg);
+#ifndef BATCH_ENABLED
+        rsdco_rdma_write_single_rpli(cur_slot->buf, cur_slot->buf_len, hashed, msg);
+#else
+        rsdco_rdma_write_multi_rpli(slot_idx);
+#endif
         rsdco_get_ts_end_rpli_core(idx);
 
         cur_slot->is_ready = 0;
@@ -276,7 +367,7 @@ void rsdco_request_to_chkr(void* buf, uint16_t buf_len, void* key, uint16_t key_
     __sync_fetch_and_add(&chkr_reqs.slot[slot_idx].is_blocked, 1);
     
     uint64_t idx = rsdco_get_ts_start_chkr_core();
-    rsdco_rdma_write_chkr(
+    rsdco_rdma_write_single_chkr(
         chkr_reqs.slot[slot_idx].buf,
         chkr_reqs.slot[slot_idx].buf_len,
         hashed,

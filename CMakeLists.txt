@@ -50,10 +50,23 @@ message("-- rsdco Standalone Binary --")
 set(rsdco_standalone     rsdco-standalone)
 add_executable(
     ${rsdco_standalone}
-    ${PROJECT_SOURCE_DIR}/src/tests/standalone.cc
+    ${PROJECT_SOURCE_DIR}/src/tests/st-random.cc
 )
 set_target_properties(
     ${rsdco_standalone} 
     PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/build/bin
 )
 target_link_libraries(${rsdco_standalone} PUBLIC ${rsdco_lib} hartebeest)
+
+# MICA Binaries
+message("-- rsdco Mica Binary --")
+set(rsdco_st_mica     rsdco-st-mica)
+add_executable(
+    ${rsdco_st_mica}
+    ${PROJECT_SOURCE_DIR}/src/standalone/standalone-mica.cc
+)
+set_target_properties(
+    ${rsdco_st_mica} 
+    PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/build/bin
+)
+target_link_libraries(${rsdco_st_mica} PUBLIC ${rsdco_lib} hartebeest)

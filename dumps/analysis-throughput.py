@@ -23,5 +23,10 @@ with open(fname, "r") as f:
     # for line in lines:
     #     acc.append((cnt / line) * pow(10, 9))
     #     cnt = cnt + 1
+    nrecords = len(lines)
+    total_time = numpy.sum(lines) / pow(10, 9)
 
-    print("Final End Time {}".format(sum(acc) / pow(10, 9)))
+    print("Number of Records: {}".format(nrecords))
+    print("Final End Time {} sec".format(total_time))
+
+    print("Throughput: {} ops/sec".format(nrecords / total_time))

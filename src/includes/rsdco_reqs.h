@@ -24,6 +24,8 @@ struct Slot {
 
     uint8_t*        key;
     uint16_t        key_len;
+
+    uint8_t         msg;
 };
 
 #define SLOT_MAX    512

@@ -20,7 +20,7 @@ if [[ ${workspace_home} != ${project_home} ]]; then
 fi
 
 workspace_home=`pwd`
-exp_home="${workspace_home}/experiments"
+exp_home="${workspace_home}/experiments/rc-craq"
 
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:${workspace_home}/build/lib
 export LIBRARY_PATH=${workspace_home}/build/lib:$LIBRARY_PATH
@@ -36,7 +36,7 @@ if [[ "${args}" == *"make"* ]]; then
     printf "${normalc}Current directory: ${exp_home} \n"
 
     g++ -o rsdco-rc-craq rc_craq.cc -lhartebeest -lrsdco -lpthread
-    mv rsdco-rc-craq ../build/bin
+    mv rsdco-rc-craq ../../build/bin
 fi
 
 #

@@ -12,8 +12,9 @@ for fname in cur_files:
         continue
     else: exclude_files.append(fname)
 
-for fname in exclude_files:   
-    cur_files.remove(fname)
+for fname in exclude_files:
+    if fname in cur_files:
+        cur_files.remove(fname)
 
 summary = []
 gnuplot_summary = []
