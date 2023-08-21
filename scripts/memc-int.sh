@@ -147,12 +147,16 @@ if [[ "${args}" == *"run"* ]]; then
         -p 6379 \
         -t 4 \
         -m 32768
-        --io-threads 4
+        # --io-threads 4
 
     mv dump-0.txt dump-memcached-rpli.txt
     mv dump-1.txt dump-memcached-chkr.txt
     mv dump-2.txt dump-memcached-rpli-core.txt
     mv dump-3.txt dump-memcached-chkr-core.txt
+    mv dump-4.txt dump-memcached-realtime.txt
+
+    mv dump-*txt dumps
+    cd dumps
 
     python3 analysis-dump.py
 fi
