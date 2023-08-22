@@ -1,6 +1,7 @@
 #pragma once
 
 #include "./rsdco_conn.h"
+#include "./rsdco_heartbeat.h"
 #include "./rsdco_hotel.h"
 #include "./rsdco_reqs.h"
 #include "./rsdco_wrkr.h"

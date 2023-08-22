@@ -18,8 +18,8 @@
 
 pthread_mutex_t propose_lock = PTHREAD_MUTEX_INITIALIZER;
 
-#include "../hartebeest/src/includes/hartebeest-c.h"
-#include "../src/includes/rsdco.h"
+#include "../../hartebeest/src/includes/hartebeest-c.h"
+#include "../../src/includes/rsdco.h"
 
 int is_head(int nid) {
     return (nid == 0);

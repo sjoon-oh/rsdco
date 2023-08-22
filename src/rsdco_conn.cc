@@ -276,6 +276,10 @@ void rsdco_connector_init() {
 
     hartebeest_memc_del_general(msg.c_str());
 
+    // Added for Heartbeat
+    rsdco_heartbeat_init();
+    rsdco_heartbeat_release();
+
     return;
 }
 

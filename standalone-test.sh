@@ -1,7 +1,7 @@
 #!/bin/bash
 
 nthreads="
-3
+1
 "
 
 key_len=16
