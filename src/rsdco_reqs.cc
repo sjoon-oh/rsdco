@@ -49,6 +49,8 @@ extern std::string rsdco_common_pd;
 extern std::string sysvar_nid;
 extern std::vector<std::string> rsdco_sysvar_nids;
 
+extern uint32_t rsdco_on_configure;
+
 int rsdco_slot_hash_comp(void* a, void* b) {
 
     Slot* target_a = reinterpret_cast<Slot*>(a);
@@ -272,6 +274,7 @@ void rsdco_rdma_write_single_chkr(void* local_buffer, uint16_t buf_len, uint32_t
 
 void rsdco_request_to_rpli(void* buf, uint16_t buf_len, void* key, uint16_t key_len, uint32_t hashed, uint8_t msg) {
 
+    uint32_t reconfigure;
     uint32_t slot_idx;
     while ( !((slot_idx = __sync_fetch_and_add(&rpli_reqs.next_free_slot, 1)) < SLOT_MAX) )
         ;
@@ -318,6 +321,11 @@ void rsdco_request_to_rpli(void* buf, uint16_t buf_len, void* key, uint16_t key_
 #endif
 
         uint64_t idx = rsdco_get_ts_start_rpli_core();
+
+        // Configure on going...
+        while ((reconfigure = __sync_fetch_and_add(&rsdco_on_configure, 0)) != 0)
+            ;
+
 #ifndef BATCH_ENABLED
         rsdco_rdma_write_single_rpli(cur_slot->buf, cur_slot->buf_len, hashed, msg);
 #else
@@ -379,7 +387,15 @@ void rsdco_request_to_chkr(void* buf, uint16_t buf_len, void* key, uint16_t key_
     while (__sync_fetch_and_add(&chkr_reqs.slot[slot_idx].is_blocked, 0) == 1)
         ;
     
-    // printf("Ask for %ld unlocked\n", hashed, owned, slot_idx);
+    while (__sync_fetch_and_add(&chkr_reqs.slot[slot_idx].is_blocked, 0) == 1) {
+        if (__sync_fetch_and_add(&rsdco_on_configure, 0) != 0) {
+            
+            printf("Reconfigure checker\n");
+
+
+            break;
+        }
+    }
     
     chkr_reqs.next_free_slot += 1;
     pthread_mutex_unlock(&rsdco_propose_chkr_mtx);

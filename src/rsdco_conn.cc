@@ -280,6 +280,8 @@ void rsdco_connector_init() {
     rsdco_heartbeat_init();
     rsdco_heartbeat_release();
 
+    rsdco_spawn_hb_tracker();
+
     return;
 }
 

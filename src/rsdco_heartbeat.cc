@@ -32,7 +32,10 @@ struct HeartbeatLocalTable local_hb_tracker;
 
 std::vector<struct RsdcoConnectPair> rsdco_hb_conn{};
 
-int rsdco_conf_on_update;
+extern std::vector<struct RsdcoConnectPair> rsdco_rpli_conn;
+extern std::vector<struct RsdcoConnectPair> rsdco_chkr_conn;
+
+uint32_t rsdco_on_configure = 0;
 
 // Predefined
 extern std::string rsdco_common_pd;
@@ -146,7 +149,7 @@ void rsdco_heartbeat_qp_init() {
 void rsdco_heartbeat_init() {
 
     // No need to be atomically updated, for now.
-    rsdco_conf_on_update = 0;
+    rsdco_on_configure = 0;
     
     assert(hartebeest_get_local_pd(rsdco_common_pd.c_str()) != nullptr);
 
@@ -165,10 +168,16 @@ void rsdco_heartbeat_init() {
     hbstat_lkey = local_hbstat_mr->lkey;
 
     hbstat->view = 0;
-    hbstat->msg_from = 0;
+    hbstat->exclude = EXCLUDE_RESET;
     hbstat->msg = MSG_WAIT;
+
     std::memset(hbstat->live_status, 0, sizeof(hbstat->live_status));
-    hbstat->neon_sign = 0;
+    std::memset(hbstat->neon_sign, 0, sizeof(hbstat->neon_sign));
+
+    for (int i = 0; i < MAX_N_NODES; i++) {
+        local_hb_tracker.neon_sign[i] = -1;
+        local_hb_tracker.score[i] = SCORE_DEFAULT;
+    }
 
     hartebeest_memc_push_local_mr(
         ("hbstat-table-" + sysvar_nid).c_str(), rsdco_common_pd.c_str(), ("hbstat-table-" + sysvar_nid).c_str());
@@ -177,8 +186,6 @@ void rsdco_heartbeat_init() {
     rsdco_heartbeat_qp_init();
     hartebeest_memc_del_general(("hbstat-table-" + sysvar_nid).c_str()); // Remove MR
 
-    printf("Local hbstat: %p\n", hbstat);
-    printf("Local hbstat table lkey: %ld, rkey: %ld\n", hbstat_lkey, local_hbstat_mr->rkey);
     printf("HB Conns: \n");
     for (auto& conn: rsdco_hb_conn) {
         printf("    - NID %ld, MR: %p, rkey: %ld\n", conn.remote_node_id, conn.remote_mr->addr, conn.remote_mr->rkey);
@@ -186,7 +193,7 @@ void rsdco_heartbeat_init() {
 }
 
 void rsdco_incr_local_neonsign() {    
-    hbstat->neon_sign += 1;
+    hbstat->neon_sign[rsdco_sysvar_nid_int]++;
 }
 
 bool rsdco_is_lowest_alive() {
@@ -211,7 +218,7 @@ void rsdco_heartbeat_release() {
     if (rsdco_is_lowest_alive()) {
 
         hbstat->view = 1;
-        hbstat->msg_from = rsdco_sysvar_nid_int;
+        hbstat->exclude = rsdco_sysvar_nid_int;
         hbstat->msg = MSG_RELEASE;
 
         for (auto& ctx: rsdco_hb_conn) {
@@ -237,26 +244,136 @@ void rsdco_heartbeat_release() {
     printf("Heartbeat status table initialized.\n");
 }
 
+void rsdco_conn_remove(int dead_node_id) {
+
+    for (std::vector<struct RsdcoConnectPair>::iterator it = rsdco_hb_conn.begin(); it != rsdco_hb_conn.end(); ++it) {
+        if ((*it).remote_node_id == dead_node_id) {
+            it = rsdco_hb_conn.erase(it);
+            break;
+        }
+    }
+
+    for (std::vector<struct RsdcoConnectPair>::iterator it = rsdco_rpli_conn.begin(); it != rsdco_rpli_conn.end(); ++it) {
+        if ((*it).remote_node_id == dead_node_id) {
+            it = rsdco_rpli_conn.erase(it);
+            break;
+        }
+    }
+
+    for (std::vector<struct RsdcoConnectPair>::iterator it = rsdco_chkr_conn.begin(); it != rsdco_chkr_conn.end(); ++it) {
+        if ((*it).remote_node_id == dead_node_id) {
+            it = rsdco_chkr_conn.erase(it);
+            break;
+        }
+    }
+
+    rsdco_sysvar_nids.pop_back(); 
+
+    printf("Reset conns: <%ld, %ld, %ld>\n", rsdco_hb_conn.size(), rsdco_rpli_conn.size(), rsdco_chkr_conn.size());
+}
+
+void rsdco_reconfigure() {
+
+    assert(hbstat->exclude != EXCLUDE_RESET);
+
+    // Reconfigure
+    __sync_fetch_and_add(&rsdco_on_configure, 1); // Lock globally.
+
+    rsdco_conn_remove(hbstat->exclude);
+
+    if (rsdco_is_lowest_alive()) {
+
+        printf("Notifying NID[%ld] is dead.\n", hbstat->exclude);
+
+        hbstat->view += 1;
+        hbstat->exclude = EXCLUDE_RESET;
+        hbstat->msg = MSG_RELEASE;
+
+        for (auto& ctx: rsdco_hb_conn) {
+
+            struct HeartbeatStatTable* remote_hbstat = 
+                reinterpret_cast<struct HeartbeatStatTable*>(ctx.remote_mr->addr);
+
+            hartebeest_rdma_post_single_fast(
+                ctx.local_qp, hbstat, remote_hbstat, 3 * sizeof(uint32_t), IBV_WR_RDMA_WRITE, 
+                    hbstat_lkey, ctx.remote_mr->rkey, 0
+            );
+
+            hartebeest_rdma_send_poll(ctx.local_qp);
+        }
+    }
+    else {
+        printf("Detected to be dead: %ld, Waiting for reconfigure...\n", hbstat->exclude);
+        while (hbstat->msg != MSG_RELEASE) {
+            ;
+        }
+    }
+    printf("Reconfigured: excluded %ld\n", hbstat->exclude);
+
+    hbstat->exclude = EXCLUDE_RESET;
+
+    for (int i = 0; i < MAX_N_NODES; i++)
+        local_hb_tracker.score[i] -= 1000;
+
+    __sync_fetch_and_and(&rsdco_on_configure, 0);
+}
+
+bool rsdco_detect_liveness() {
+
+    bool detected = false;
+    for (auto& conn: rsdco_hb_conn) {
+        
+        if (hbstat->neon_sign[conn.remote_node_id] != local_hb_tracker.neon_sign[conn.remote_node_id]) {
+
+            local_hb_tracker.neon_sign[conn.remote_node_id] = hbstat->neon_sign[conn.remote_node_id];   // Backup
+            local_hb_tracker.score[conn.remote_node_id] = SCORE_DEFAULT;
+        }
+        else {
+            if (local_hb_tracker.score[conn.remote_node_id] < 0) {
+                hbstat->live_status[conn.remote_node_id] = LIVE_STATUS_DEAD;
+                hbstat->msg = MSG_WAIT;
+                hbstat->exclude = conn.remote_node_id;
+                detected = true;
+
+                break;
+            }
+            else {
+                // Give more chance
+                local_hb_tracker.score[conn.remote_node_id] -= 1;
+            }
+        }
+    }
+
+    return detected;
+}
+
 void rsdco_spawn_hb_tracker() {
     
     std::thread tracker([]() {
-
+        
         while (1) {
-            usleep(10);
+            usleep(HEARTBEAT_UPDATE_US);
             rsdco_incr_local_neonsign();
             
+            // Propagate
             for (auto& ctx: rsdco_hb_conn) {
 
-                struct HeartbeatStatTable* remote_hbstat = 
+                struct HeartbeatStatTable*  remote_hbstat= 
                     reinterpret_cast<struct HeartbeatStatTable*>(ctx.remote_mr->addr);
 
                 hartebeest_rdma_post_single_fast(
-                    ctx.local_qp, hbstat, ctx.remote_mr->addr, 3 * sizeof(uint32_t), IBV_WR_RDMA_WRITE, 
+                    ctx.local_qp, 
+                    &hbstat->neon_sign[rsdco_sysvar_nid_int], 
+                    &remote_hbstat->neon_sign[rsdco_sysvar_nid_int], sizeof(uint32_t), IBV_WR_RDMA_WRITE, 
                         hbstat_lkey, ctx.remote_mr->rkey, 0
                 );
 
                 hartebeest_rdma_send_poll(ctx.local_qp);
             }
+
+            if (rsdco_detect_liveness())
+                rsdco_reconfigure();
+
         }
     });
     
