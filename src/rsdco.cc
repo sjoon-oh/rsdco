@@ -6,6 +6,7 @@ struct elapsed_timer* rpli_timer_core;
 struct elapsed_timer* chkr_timer_core;
 
 struct elapsed_timer* aggr_timer;
+struct elapsed_timer* fail_timer;
 
 void rsdco_init_timers() {
     rpli_timer = elapsed_timer_register();  // 0
@@ -15,6 +16,7 @@ void rsdco_init_timers() {
     chkr_timer_core = elapsed_timer_register();
 
     aggr_timer = elapsed_timer_register();
+    fail_timer = elapsed_timer_register();
 }
 
 uint64_t rsdco_get_ts_start_rpli() {
@@ -74,6 +76,17 @@ uint64_t rsdco_get_ts_start_aggr() {
 
 void rsdco_get_ts_end_aggr(uint64_t idx) {
     get_end_ts(aggr_timer, idx);
+}
+
+uint64_t rsdco_get_ts_start_fail() {
+    uint64_t idx = __sync_fetch_and_add(&(fail_timer->ts_idx), 1);
+    get_start_ts(fail_timer, idx);
+
+    return idx;
+}
+
+void rsdco_get_ts_end_fail(uint64_t idx) {
+    get_end_ts(fail_timer, idx);
 }
 
 void rsdco_dump_timestamps() {

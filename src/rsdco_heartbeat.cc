@@ -17,6 +17,7 @@
 
 #include "../hartebeest/src/includes/hartebeest-c.h"
 
+#include "./includes/rsdco.h"
 #include "./includes/rsdco_conn.h"
 #include "./includes/rsdco_heartbeat.h"
 
@@ -268,34 +269,44 @@ void rsdco_conn_remove(int dead_node_id) {
     }
 
     rsdco_sysvar_nids.pop_back(); 
-
-    printf("Reset conns: <%ld, %ld, %ld>\n", rsdco_hb_conn.size(), rsdco_rpli_conn.size(), rsdco_chkr_conn.size());
 }
 
 void rsdco_reconfigure() {
 
     assert(hbstat->exclude != EXCLUDE_RESET);
 
+    uint64_t ts_idx = rsdco_get_ts_start_fail();
+
     // Reconfigure
     __sync_fetch_and_add(&rsdco_on_configure, 1); // Lock globally.
 
     rsdco_conn_remove(hbstat->exclude);
 
+    struct HeartbeatStatTable* remote_hbstat;
     if (rsdco_is_lowest_alive()) {
-
-        printf("Notifying NID[%ld] is dead.\n", hbstat->exclude);
-
-        hbstat->view += 1;
-        hbstat->exclude = EXCLUDE_RESET;
-        hbstat->msg = MSG_RELEASE;
-
         for (auto& ctx: rsdco_hb_conn) {
 
-            struct HeartbeatStatTable* remote_hbstat = 
+            remote_hbstat = 
+                reinterpret_cast<struct HeartbeatStatTable*>(ctx.remote_mr->addr);
+
+            // First, wait others to detect them
+            while (hbstat->msg != MSG_WAIT) {
+                hartebeest_rdma_post_single_fast(
+                    ctx.local_qp, &hbstat->msg, &remote_hbstat->msg, sizeof(uint32_t), IBV_WR_RDMA_READ, 
+                        hbstat_lkey, ctx.remote_mr->rkey, 0
+                );
+                hartebeest_rdma_recv_poll(ctx.local_qp);
+            }
+        }
+
+        hbstat->msg = MSG_RELEASE;
+        for (auto& ctx: rsdco_hb_conn) {
+
+            remote_hbstat = 
                 reinterpret_cast<struct HeartbeatStatTable*>(ctx.remote_mr->addr);
 
             hartebeest_rdma_post_single_fast(
-                ctx.local_qp, hbstat, remote_hbstat, 3 * sizeof(uint32_t), IBV_WR_RDMA_WRITE, 
+                ctx.local_qp, &hbstat->msg, &remote_hbstat->msg, sizeof(uint32_t), IBV_WR_RDMA_WRITE, 
                     hbstat_lkey, ctx.remote_mr->rkey, 0
             );
 
@@ -303,22 +314,21 @@ void rsdco_reconfigure() {
         }
     }
     else {
-        printf("Detected to be dead: %ld, Waiting for reconfigure...\n", hbstat->exclude);
+        hbstat->msg = MSG_WAIT;
         while (hbstat->msg != MSG_RELEASE) {
             ;
         }
     }
-    printf("Reconfigured: excluded %ld\n", hbstat->exclude);
 
     hbstat->exclude = EXCLUDE_RESET;
 
-    for (int i = 0; i < MAX_N_NODES; i++)
-        local_hb_tracker.score[i] -= 1000;
-
     __sync_fetch_and_and(&rsdco_on_configure, 0);
+    __sync_fetch_and_add(&hbstat->view, 1);
+
+    rsdco_get_ts_end_fail(ts_idx);
 }
 
-bool rsdco_detect_liveness() {
+bool rsdco_detect_dead() {
 
     bool detected = false;
     for (auto& conn: rsdco_hb_conn) {
@@ -326,12 +336,14 @@ bool rsdco_detect_liveness() {
         if (hbstat->neon_sign[conn.remote_node_id] != local_hb_tracker.neon_sign[conn.remote_node_id]) {
 
             local_hb_tracker.neon_sign[conn.remote_node_id] = hbstat->neon_sign[conn.remote_node_id];   // Backup
-            local_hb_tracker.score[conn.remote_node_id] = SCORE_DEFAULT;
+            local_hb_tracker.score[conn.remote_node_id]++;
+
+            if (local_hb_tracker.score[conn.remote_node_id] > SCORE_DEFAULT) 
+                local_hb_tracker.score[conn.remote_node_id] = SCORE_DEFAULT;
         }
         else {
             if (local_hb_tracker.score[conn.remote_node_id] < 0) {
                 hbstat->live_status[conn.remote_node_id] = LIVE_STATUS_DEAD;
-                hbstat->msg = MSG_WAIT;
                 hbstat->exclude = conn.remote_node_id;
                 detected = true;
 
@@ -350,8 +362,9 @@ bool rsdco_detect_liveness() {
 void rsdco_spawn_hb_tracker() {
     
     std::thread tracker([]() {
-        
+
         while (1) {
+
             usleep(HEARTBEAT_UPDATE_US);
             rsdco_incr_local_neonsign();
             
@@ -367,12 +380,16 @@ void rsdco_spawn_hb_tracker() {
                     &remote_hbstat->neon_sign[rsdco_sysvar_nid_int], sizeof(uint32_t), IBV_WR_RDMA_WRITE, 
                         hbstat_lkey, ctx.remote_mr->rkey, 0
                 );
-
-                hartebeest_rdma_send_poll(ctx.local_qp);
+                
+                // Manual poll, do not care about wc status.
+                struct ibv_wc wc;
+                while (ibv_poll_cq(ctx.local_qp->send_cq, 1, &wc) == 0) ;
             }
 
-            if (rsdco_detect_liveness())
+            if (rsdco_detect_dead()) {
+                printf("Reconfigure: Detected dead nid(%ld)\n", hbstat->exclude);
                 rsdco_reconfigure();
+            }
 
         }
     });

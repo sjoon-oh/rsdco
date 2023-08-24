@@ -15,8 +15,8 @@
 #define LIVE_STATUS_ALIVE       0
 #define LIVE_STATUS_DEAD        0x0a
 
-#define HEARTBEAT_UPDATE_US     1000
-#define SCORE_DEFAULT   5
+#define HEARTBEAT_UPDATE_US     500
+#define SCORE_DEFAULT   10
 
 struct __attribute__((packed)) HeartbeatStatTable {
     uint32_t    view;

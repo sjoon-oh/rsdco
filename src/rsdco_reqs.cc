@@ -49,6 +49,7 @@ extern std::string rsdco_common_pd;
 extern std::string sysvar_nid;
 extern std::vector<std::string> rsdco_sysvar_nids;
 
+extern struct HeartbeatStatTable* hbstat;
 extern uint32_t rsdco_on_configure;
 
 int rsdco_slot_hash_comp(void* a, void* b) {
@@ -274,7 +275,6 @@ void rsdco_rdma_write_single_chkr(void* local_buffer, uint16_t buf_len, uint32_t
 
 void rsdco_request_to_rpli(void* buf, uint16_t buf_len, void* key, uint16_t key_len, uint32_t hashed, uint8_t msg) {
 
-    uint32_t reconfigure;
     uint32_t slot_idx;
     while ( !((slot_idx = __sync_fetch_and_add(&rpli_reqs.next_free_slot, 1)) < SLOT_MAX) )
         ;
@@ -321,10 +321,15 @@ void rsdco_request_to_rpli(void* buf, uint16_t buf_len, void* key, uint16_t key_
 #endif
 
         uint64_t idx = rsdco_get_ts_start_rpli_core();
+        uint32_t local_view = __sync_fetch_and_add(&hbstat->view, 0);
 
-        // Configure on going...
-        while ((reconfigure = __sync_fetch_and_add(&rsdco_on_configure, 0)) != 0)
-            ;
+        if (__sync_fetch_and_add(&rsdco_on_configure, 0) != 0) {
+            printf("Configure detected: %s locked\n", __func__);
+            while (local_view == __sync_fetch_and_add(&hbstat->view, 0))
+                ;
+            
+            printf("View change: %s unlocked\n", __func__);
+        }
 
 #ifndef BATCH_ENABLED
         rsdco_rdma_write_single_rpli(cur_slot->buf, cur_slot->buf_len, hashed, msg);
@@ -352,7 +357,8 @@ void rsdco_request_to_rpli(void* buf, uint16_t buf_len, void* key, uint16_t key_
     pthread_mutex_unlock(&rsdco_propose_rpli_mtx);
 }
 
-void rsdco_request_to_chkr(void* buf, uint16_t buf_len, void* key, uint16_t key_len, uint32_t hashed, int owned) {
+void rsdco_request_to_chkr(void* buf, uint16_t buf_len, void* key, uint16_t key_len, uint32_t hashed, int owned, int (*ruler)(uint32_t)) {
+
     pthread_mutex_lock(&rsdco_propose_chkr_mtx);
 
     uint32_t slot_idx = chkr_reqs.next_free_slot;
@@ -384,17 +390,31 @@ void rsdco_request_to_chkr(void* buf, uint16_t buf_len, void* key, uint16_t key_
     
     rsdco_get_ts_end_chkr_core(idx);
 
-    while (__sync_fetch_and_add(&chkr_reqs.slot[slot_idx].is_blocked, 0) == 1)
-        ;
-    
-    while (__sync_fetch_and_add(&chkr_reqs.slot[slot_idx].is_blocked, 0) == 1) {
-        if (__sync_fetch_and_add(&rsdco_on_configure, 0) != 0) {
-            
-            printf("Reconfigure checker\n");
+    // Original
+    // while (__sync_fetch_and_add(&chkr_reqs.slot[slot_idx].is_blocked, 0) == 1)
+    //     ;
+    uint32_t local_view = __sync_fetch_and_add(&hbstat->view, 0);
 
+    if (__sync_fetch_and_add(&rsdco_on_configure, 0) != 0) {
+        printf("Configure detected: %s locked\n", __func__);
+        while (local_view == __sync_fetch_and_add(&hbstat->view, 0))
+            ;
+        
+        printf("View change: %s unlocked\n", __func__);
 
-            break;
-        }
+        owned = ruler(chkr_reqs.slot[slot_idx].hashed);
+
+        if (owned == rsdco_sysvar_nid_int)
+            rsdco_request_to_rpli(
+                buf, buf_len, key, key_len, hashed, RSDCO_MSG_PURE
+            );
+        else
+            rsdco_rdma_write_single_chkr(
+                chkr_reqs.slot[slot_idx].buf,
+                chkr_reqs.slot[slot_idx].buf_len,
+                hashed,
+                owned
+            );
     }
     
     chkr_reqs.next_free_slot += 1;
@@ -420,7 +440,7 @@ int rsdco_add_request(void* buf, uint16_t buf_len, void* key, uint16_t key_len, 
     }
     else {
         ts_idx = rsdco_get_ts_start_chkr();
-        rsdco_request_to_chkr(buf, buf_len, key, key_len, hkey, owned);
+        rsdco_request_to_chkr(buf, buf_len, key, key_len, hkey, owned, ruler);
         rsdco_get_ts_end_chkr(ts_idx);
 
     }
