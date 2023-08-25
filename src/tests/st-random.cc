@@ -41,7 +41,7 @@ void replicate_func(std::mt19937& generator, size_t num_requests, int payload_sz
             local_buffer.buffer,
             key_sz,
             0,
-            rsdco_rule_balanced
+            rsdco_rule_always_owner
         );
 
         // struct timespec start, end;

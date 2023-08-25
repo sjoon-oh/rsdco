@@ -40,7 +40,7 @@ int rsdco_add_request(void*, uint16_t, void*, uint16_t, uint32_t, int (*)(uint32
 void rsdco_request_to_rpli(void*, uint16_t, void*, uint16_t, uint32_t, uint8_t);
 void rsdco_request_to_chkr(void*, uint16_t, void*, uint16_t, uint32_t, uint8_t, int (*)(uint32_t));
 
-void rsdco_detect_poll(const char*, struct ibv_mr*, void (*)(struct MemoryHotel*, uint32_t, uint32_t, void (*)(void*, uint16_t)), void (*)(void*, uint16_t));
+void rsdco_detect_poll(const char*, struct ibv_mr*, void (*)(struct MemoryHotel*, uint32_t, uint32_t, void (*)(void*, uint16_t)), void (*)(void*, uint16_t), int);
 
 void rsdco_detect_action_rply(struct MemoryHotel*, uint32_t, uint32_t, void (*)(void*, uint16_t));
 void rsdco_detect_action_rcvr(struct MemoryHotel*, uint32_t, uint32_t, void (*)(void*, uint16_t));

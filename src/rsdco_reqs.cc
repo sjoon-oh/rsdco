@@ -42,6 +42,8 @@ RsdcoPropRequest chkr_reqs;
 pthread_mutex_t rsdco_propose_rpli_mtx = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t rsdco_propose_chkr_mtx = PTHREAD_MUTEX_INITIALIZER;
 
+int mencius_propose_enable = 0;
+
 extern std::vector<struct RsdcoConnectPair> rsdco_rpli_conn;
 extern std::vector<struct RsdcoConnectPair> rsdco_chkr_conn;
 
@@ -292,33 +294,15 @@ void rsdco_request_to_rpli(void* buf, uint16_t buf_len, void* key, uint16_t key_
     rpli_reqs.slot[slot_idx].is_ready = 1;
     rpli_reqs.slot[slot_idx].is_blocked = 1;
 
-    rsdco_try_insert(&rpli_reqs.slot[slot_idx]);
+    // rsdco_try_insert(&rpli_reqs.slot[slot_idx]);
     pthread_mutex_lock(&rsdco_propose_rpli_mtx);
 
     // Search for next.
-    struct List* bucket = rsdco_depchecker.getBucket(hashed);
+    // struct List* bucket = rsdco_depchecker.getBucket(hashed);
     struct Slot* cur_slot = &rpli_reqs.slot[slot_idx];
-    struct Slot* next_slot;
+    // struct Slot* next_slot;
 
     if (rpli_reqs.slot[slot_idx].is_ready == 1) {
-
-#ifndef BATCH_ENABLED
-        if (IS_MARKED_AS_DELETED(rpli_reqs.slot[slot_idx].next_slot)) {
-            while (cur_slot != &bucket->head) {
-
-                next_slot = cur_slot->next_slot;
-                if (IS_MARKED_AS_DELETED(next_slot)) {
-                    cur_slot->is_ready = 0;
-                    cur_slot = GET_UNMARKED_REFERENCE(next_slot);
-                }
-                else {
-                    if (cur_slot->hashed == hashed) break;
-                    else 
-                        assert(false);
-                }
-            }
-        }
-#endif
 
         uint64_t idx = rsdco_get_ts_start_rpli_core();
         uint32_t local_view = __sync_fetch_and_add(&hbstat->view, 0);
@@ -347,7 +331,7 @@ void rsdco_request_to_rpli(void* buf, uint16_t buf_len, void* key, uint16_t key_
     rpli_reqs.procd += 1;
     if (rpli_reqs.procd == (SLOT_MAX)) {
         rpli_reqs.procd = 0;
-        rsdco_depchecker.doResetAll();
+        // rsdco_depchecker.doResetAll();
         // memset(&rpli_reqs, 0, sizeof(struct RsdcoPropRequest));
 
         memset(rpli_reqs.slot, 0, sizeof(struct Slot) * SLOT_MAX);
@@ -424,41 +408,43 @@ void rsdco_request_to_chkr(void* buf, uint16_t buf_len, void* key, uint16_t key_
 
 int rsdco_add_request(void* buf, uint16_t buf_len, void* key, uint16_t key_len, uint32_t hashed, int (*ruler)(uint32_t)) {
     
-    uint32_t hkey = hashed;
-    if (key != nullptr)
-        hkey = rsdco_depchecker.doHash(key, key_len);
+    // uint32_t hkey = hashed;
+    // if (key != nullptr)
+    //     hkey = rsdco_depchecker.doHash(key, key_len);
 
     uint64_t ts_idx, aggr_idx;
-    int owned = ruler(hkey);
+    // int owned = ruler(hkey);
 
     // printf("Add request: %ld, owned by %ld\n", hkey, owned);
     aggr_idx = rsdco_get_ts_start_aggr();
-    if (owned == rsdco_sysvar_nid_int) {
-        ts_idx = rsdco_get_ts_start_rpli();
-        rsdco_request_to_rpli(buf, buf_len, key, key_len, hkey, RSDCO_MSG_PURE);
-        rsdco_get_ts_end_rpli(ts_idx);
-    }
-    else {
-        ts_idx = rsdco_get_ts_start_chkr();
-        rsdco_request_to_chkr(buf, buf_len, key, key_len, hkey, owned, ruler);
-        rsdco_get_ts_end_chkr(ts_idx);
+    
+    int enable;
+    while ((enable = __sync_fetch_and_add(&mencius_propose_enable, 0)) == 0)
+        ;
 
-    }
+    rsdco_request_to_rpli(buf, buf_len, key, key_len, hashed, RSDCO_MSG_PURE);
+    __sync_fetch_and_and(&mencius_propose_enable, 0);
+
     rsdco_get_ts_end_aggr(aggr_idx);
+    return 0;
 
-    if (owned == rsdco_sysvar_nid_int)
-        return 0;
+    // if (owned == rsdco_sysvar_nid_int)
+    //     return 0;
 
-    else return 1;
+    // else return 1;
 }
 
 void rsdco_detect_poll(
         const char* detector, struct ibv_mr* detector_mr,
         void (*detect_func)(struct MemoryHotel*, uint32_t, uint32_t, void (*)(void*, uint16_t)), 
-        void (*user_action)(void*, uint16_t)
+        void (*user_action)(void*, uint16_t),
+        int mencius_enabled
     ) {
 
     assert(detector_mr != nullptr);
+
+    if (mencius_enabled == 1)
+        printf("I am the unlocker for Mencius emulation\n");
 
     void* local_mr_addr = detector_mr->addr;
     struct MemoryHotel* hotel = 
@@ -507,6 +493,12 @@ void rsdco_detect_poll(
 
             detect_func(hotel, header_room, prev_header_room, user_action);
             prev_header_room = header_room;
+
+            if (mencius_enabled) {
+                // printf("Unlock!\n");
+                while (__sync_fetch_and_add(&mencius_propose_enable, 0) != 0) ;
+                __sync_fetch_and_add(&mencius_propose_enable, 1);
+            }
         }
     }
 }
