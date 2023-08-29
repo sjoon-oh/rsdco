@@ -237,7 +237,7 @@ void rsdco_rdma_write_multi_rpli(uint32_t slotidx) {
 }
 
 void rsdco_rdma_write_single_chkr(void* local_buffer, uint16_t buf_len, uint32_t hashed, int owned) {
-    
+    assert(false);
     assert(rsdco_chkr_mr != nullptr);
 
     struct MemoryHotel* hotel = 
@@ -297,6 +297,14 @@ void rsdco_request_to_rpli(void* buf, uint16_t buf_len, void* key, uint16_t key_
     // rsdco_try_insert(&rpli_reqs.slot[slot_idx]);
     pthread_mutex_lock(&rsdco_propose_rpli_mtx);
 
+    // printf("proposing: %ld, pending enable\n", slot_idx);
+
+    int enable;
+    while ((enable = __sync_fetch_and_add(&mencius_propose_enable, 0)) == 0)
+        ;
+    
+    // printf("proposing: %ld\n", slot_idx);
+
     // Search for next.
     // struct List* bucket = rsdco_depchecker.getBucket(hashed);
     struct Slot* cur_slot = &rpli_reqs.slot[slot_idx];
@@ -338,7 +346,10 @@ void rsdco_request_to_rpli(void* buf, uint16_t buf_len, void* key, uint16_t key_
         __sync_fetch_and_and(&rpli_reqs.next_free_slot, 0);
     }
 
+    __sync_fetch_and_and(&mencius_propose_enable, 0);
     pthread_mutex_unlock(&rsdco_propose_rpli_mtx);
+
+    // printf("end proposing: %ld\n", slot_idx);
 }
 
 void rsdco_request_to_chkr(void* buf, uint16_t buf_len, void* key, uint16_t key_len, uint32_t hashed, int owned, int (*ruler)(uint32_t)) {
@@ -417,14 +428,8 @@ int rsdco_add_request(void* buf, uint16_t buf_len, void* key, uint16_t key_len, 
 
     // printf("Add request: %ld, owned by %ld\n", hkey, owned);
     aggr_idx = rsdco_get_ts_start_aggr();
-    
-    int enable;
-    while ((enable = __sync_fetch_and_add(&mencius_propose_enable, 0)) == 0)
-        ;
 
     rsdco_request_to_rpli(buf, buf_len, key, key_len, hashed, RSDCO_MSG_PURE);
-    __sync_fetch_and_and(&mencius_propose_enable, 0);
-
     rsdco_get_ts_end_aggr(aggr_idx);
     return 0;
 
@@ -463,6 +468,10 @@ void rsdco_detect_poll(
 
     uint32_t prev_header_room = 1;
 
+    char dummy_mem = 0xf;
+
+    int count = 0;
+
     while (1) {
         
         header_room = hotel->next_room_free;
@@ -474,9 +483,12 @@ void rsdco_detect_poll(
         canary = reinterpret_cast<uintptr_t>(payload) + header->buf_len;
         canary_val = *(reinterpret_cast<uint8_t*>(canary));
 
+        int enable;
         if (
-            ((header->proposal == local_proposal) && (canary_val == RSDCO_CANARY)) ||
-            ((header->proposal == local_proposal) && (header->message == RSDCO_HDR_ONLY)) 
+            ((header->proposal == local_proposal) && (canary_val == RSDCO_CANARY)) && 
+                ((header->message == RSDCO_MSG_ACK) || (header->message == RSDCO_MSG_PURE))
+            // ||
+            // ((header->proposal == local_proposal) && (header->message == RSDCO_HDR_ONLY)) 
             ) {
             
             // float perc = header_room / RSDCO_LOGIDX_END * 100;
@@ -495,9 +507,29 @@ void rsdco_detect_poll(
             prev_header_room = header_room;
 
             if (mencius_enabled) {
-                // printf("Unlock!\n");
-                while (__sync_fetch_and_add(&mencius_propose_enable, 0) != 0) ;
-                __sync_fetch_and_add(&mencius_propose_enable, 1);
+                // printf(" >> Detected room: %ld, size: %ld, msg: %ld\n", header_room, header->buf_len, header->message);
+                // __sync_fetch_and_add(&mencius_propose_enable, 1);
+                if (pthread_mutex_trylock(&rsdco_propose_rpli_mtx) == 0) {
+                    // Case when lock acquired
+                    // rsdco_request_to_rpli(payload, 1, nullptr, 0, 0, RSDCO_MSG_ACK);
+                    
+                    rsdco_rdma_write_single_rpli(&dummy_mem, sizeof(dummy_mem), 0, RSDCO_MSG_ACK);
+                    __sync_fetch_and_and(&mencius_propose_enable, 0);
+                    
+                    pthread_mutex_unlock(&rsdco_propose_rpli_mtx);
+                }
+                else {
+                    // printf(" >> Skipping SKIP: %ld\n", ++count);
+                    __sync_fetch_and_add(&mencius_propose_enable, 1);
+                }
+
+                // printf("Wait for disable\n");
+
+                while ((enable = __sync_fetch_and_add(&mencius_propose_enable, 0)) != 0) 
+                    ;
+
+                // printf("OK disabled\n");
+
             }
         }
     }
@@ -517,9 +549,9 @@ void rsdco_detect_action_rply(struct MemoryHotel* hotel, uint32_t header_room, u
     if (header->message == RSDCO_MSG_ACK) {
         
         // printf("ACK received: %ld, curr pending chkr: %ld, slotidx: %ld\n", header->hashed, chkr_reqs.slot[chkr_reqs.next_free_slot].hashed, chkr_reqs.next_free_slot);
-        if (chkr_reqs.slot[chkr_reqs.next_free_slot].hashed == header->hashed) {
-            __sync_fetch_and_and(&(chkr_reqs.slot[chkr_reqs.next_free_slot].is_blocked), 0);
-        }
+        // if (chkr_reqs.slot[chkr_reqs.next_free_slot].hashed == header->hashed) {
+        //     __sync_fetch_and_and(&(chkr_reqs.slot[chkr_reqs.next_free_slot].is_blocked), 0);
+        // }
         
         return;
     }
