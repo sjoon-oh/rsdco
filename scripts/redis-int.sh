@@ -150,8 +150,7 @@ if [[ "${args}" == *"run"* ]]; then
         --port 6379 \
         --protected-mode no \
         --io-threads-do-reads yes \
-        --save "" --appendonly no \
-        # --io-threads 4
+        --save "" --appendonly no
 
     mv dump-0.txt dump-redis-rpli.txt
     mv dump-1.txt dump-redis-chkr.txt

@@ -30,6 +30,12 @@ struct Payload {
 
 void replicate_func(std::mt19937& generator, size_t num_requests, int payload_sz, int key_sz) {
     struct Payload local_buffer;
+
+    struct timespec start_ts;
+    struct timespec end_ts;
+    long long elapsed_time;
+
+
     for (size_t nth_req = 0; nth_req < num_requests; nth_req++) {
 
         generate_random_str(generator, local_buffer.buffer, payload_sz);
@@ -43,6 +49,13 @@ void replicate_func(std::mt19937& generator, size_t num_requests, int payload_sz
             0,
             rsdco_rule_balanced
         );
+
+        // while (1) {
+        //     clock_gettime(CLOCK_MONOTONIC, &end_ts);
+        //     elapsed_time = get_elapsed_nsec(start_ts, end_ts);
+        //     if (elapsed_time > 100000)
+        //         break;
+        // }
 
         // struct timespec start, end;
         // clock_gettime(CLOCK_MONOTONIC, &start);

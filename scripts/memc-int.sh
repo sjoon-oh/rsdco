@@ -145,10 +145,9 @@ if [[ "${args}" == *"run"* ]]; then
 
     ${workspace_home}/build/bin/rsdco-memcached \
         -p 6379 \
-        -t 4 \
+        -t 1 \
         -m 32768
-        # --io-threads 4
-
+        
     mv dump-0.txt dump-memcached-rpli.txt
     mv dump-1.txt dump-memcached-chkr.txt
     mv dump-2.txt dump-memcached-rpli-core.txt

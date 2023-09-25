@@ -391,30 +391,32 @@ void rsdco_request_to_chkr(void* buf, uint16_t buf_len, void* key, uint16_t key_
     rsdco_get_ts_end_chkr_core(idx);
 
     // Original
-    // while (__sync_fetch_and_add(&chkr_reqs.slot[slot_idx].is_blocked, 0) == 1)
-    //     ;
-    uint32_t local_view = __sync_fetch_and_add(&hbstat->view, 0);
+    while (__sync_fetch_and_add(&chkr_reqs.slot[slot_idx].is_blocked, 0) == 1) {
+        uint32_t local_view = __sync_fetch_and_add(&hbstat->view, 0);
 
-    if (__sync_fetch_and_add(&rsdco_on_configure, 0) != 0) {
-        printf("Configure detected: %s locked\n", __func__);
-        while (local_view == __sync_fetch_and_add(&hbstat->view, 0))
-            ;
-        
-        printf("View change: %s unlocked\n", __func__);
+        if (__sync_fetch_and_add(&rsdco_on_configure, 0) != 0) {
+            printf("Configure detected: %s locked\n", __func__);
+            while (local_view == __sync_fetch_and_add(&hbstat->view, 0))
+                ;
+            
+            printf("View change: %s unlocked\n", __func__);
 
-        owned = ruler(chkr_reqs.slot[slot_idx].hashed);
+            owned = ruler(chkr_reqs.slot[slot_idx].hashed);
 
-        if (owned == rsdco_sysvar_nid_int)
-            rsdco_request_to_rpli(
-                buf, buf_len, key, key_len, hashed, RSDCO_MSG_PURE
-            );
-        else
-            rsdco_rdma_write_single_chkr(
-                chkr_reqs.slot[slot_idx].buf,
-                chkr_reqs.slot[slot_idx].buf_len,
-                hashed,
-                owned
-            );
+            if (owned == rsdco_sysvar_nid_int)
+                rsdco_request_to_rpli(
+                    buf, buf_len, key, key_len, hashed, RSDCO_MSG_PURE
+                );
+            else
+                rsdco_rdma_write_single_chkr(
+                    chkr_reqs.slot[slot_idx].buf,
+                    chkr_reqs.slot[slot_idx].buf_len,
+                    hashed,
+                    owned
+                );
+            
+            break;
+        }
     }
     
     chkr_reqs.next_free_slot += 1;
